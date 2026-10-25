@@ -13,11 +13,18 @@ set "PY=%CD%\.venv-build\Scripts\python.exe"
 if errorlevel 1 exit /b 1
 "%PY%" -m pip install pyinstaller -r server\requirements.txt
 if errorlevel 1 exit /b 1
-rem Optional performance kernels: requires Rust and MSVC Build Tools.
-if /i "%~1"=="--native" (
-  "%PY%" tools\build_native.py
-  if errorlevel 1 exit /b 1
+rem Required native kernels: Rust MSVC toolchain and C++ Build Tools.
+where cargo >nul 2>nul
+if errorlevel 1 (
+  echo ERROR: Rust is required. Install Rust stable x64 MSVC from https://rustup.rs/
+  echo Also install Visual Studio Build Tools: Desktop development with C++ and Windows SDK.
+  echo Then reopen the terminal and run this script again.
+  exit /b 1
 )
+"%PY%" tools\build_native.py
+if errorlevel 1 exit /b 1
+"%PY%" -c "import sys; sys.path.insert(0, 'server'); import fast; fast.require(fast.MIN_VERSION, 'Windows build')"
+if errorlevel 1 exit /b 1
 "%PY%" tools\build_app.py --stock-bootloader
 if errorlevel 1 exit /b 1
 for %%F in (dist\BeamNG.Earth-*.exe) do (

@@ -193,6 +193,10 @@ def main():
     ap.add_argument("--require-own-bootloader", action="store_true",
                     help="Windows: stop when tools/build_bootloader.py has not made one (CI)")
     a = ap.parse_args()
+    # Fail before packaging rather than ship an executable whose world server cannot start.
+    sys.path.insert(0, os.path.join(ROOT, "server"))
+    import fast
+    fast.require(fast.MIN_VERSION, "App build")
     work = os.path.join(ROOT, "build", "app")
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work, exist_ok=True)
