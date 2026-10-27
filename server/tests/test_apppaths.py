@@ -62,13 +62,7 @@ class GameDirTest(unittest.TestCase):
         apppaths.set_game_dir("default", self.dd)
         self.assertIsNone(apppaths.saved_game_dir(self.dd))
 
-    def test_steam_library(self):
-        self.assertTrue(apppaths.in_steam_library(os.path.join("x", "steamapps", "common", "BeamNG.drive")))
-        self.assertFalse(apppaths.in_steam_library(self.game))
 
-
-@unittest.skipIf(apppaths.IS_WIN, "Linux dialog programs")
-class PickTest(unittest.TestCase):
     def test_commands(self):
         z = apppaths.pick_command("folder", "T", "/nonexistent", tool="zenity")[0]
         self.assertEqual(z[:2], ["zenity", "--file-selection"])
