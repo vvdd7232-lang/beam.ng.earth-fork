@@ -18,3 +18,12 @@ smoke test to run on the target Windows system. An actual in-game test is still 
 
 Historical research, changelog and upstream README retain their original platform
 references; they do not describe the fork's removed store integration.
+
+## 1.6.3-beta update
+
+Updated to upstream release v1.6.3-beta (d230840b0c7548b2842d46bb1869c2bdf7753ff3).
+Three-way merged upstream changes, retaining standalone direct game launch and
+native-module build checks. Added upstream remembered game/cache folders, gas
+stations, railways, revisit caching and fixes. Python compile/help and 10 selected
+launcher lifecycle/direct-start tests passed in Linux. Windows CI builds and
+smoke-tests the packaged server; real game/network access still requires testing.
