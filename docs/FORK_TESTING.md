@@ -27,3 +27,14 @@ native-module build checks. Added upstream remembered game/cache folders, gas
 stations, railways, revisit caching and fixes. Python compile/help and 10 selected
 launcher lifecycle/direct-start tests passed in Linux. Windows CI builds and
 smoke-tests the packaged server; real game/network access still requires testing.
+
+## 1.7.1-beta update
+
+Three-way updated from upstream v1.6.3-beta to v1.7.1-beta. Preserved direct
+launch, no store library/config/overlay integration, explicit/saved game folder,
+and mandatory earthfast version checks (now MIN_VERSION 100). Kept upstream
+Linux GPU selection without importing Steam launch options. Included native
+Windows certificate-store support and parent-process cleanup improvements.
+Compile/help checks and 32 selected launcher, settings and GPU unit tests passed.
+Windows CI packages the rebuilt native module and smoke-tests --server --help.
+Actual gameplay and access to external data providers need user-side testing.

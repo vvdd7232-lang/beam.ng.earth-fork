@@ -80,6 +80,74 @@ class CacheDirTest(unittest.TestCase):
             self.assertIsNone(launcher.cache_dir_arg(None, dd), "forgotten")
 
 
+class GpuPlan(unittest.TestCase):
+    """gpu_plan: the hybrid-graphics steering (the user's report, 2026-10-26: the game started directly rendered on
+    the integrated GPU where Steam's start used the dedicated one)."""
+
+    def test_nvidia_offload(self):
+        env, note = launcher.gpu_plan("auto", scan=[("intel", True, 0), ("nvidia", False, 0, "nvidia")])
+        self.assertEqual(env, {"__NV_PRIME_RENDER_OFFLOAD": "1", "__GLX_VENDOR_LIBRARY_NAME": "nvidia"})
+        self.assertIn("NVIDIA", note)
+
+    def test_nvidia_is_the_default_already(self):
+        env, note = launcher.gpu_plan("auto", scan=[("nvidia", True, 0, "nvidia"), ("intel", False, 0, "")])
+        self.assertIsNone(env)
+        self.assertIn("already", note)
+
+    def test_driverless_nvidia_goes_by_vram(self):
+        # a nouveau-bound NVIDIA card: Mesa's offload only, and only while it reports the more VRAM
+        env, note = launcher.gpu_plan("auto", scan=[("intel", True, 0), ("nvidia", False, 8 << 30, "nouveau")])
+        self.assertEqual(env, {"DRI_PRIME": "1"})
+        self.assertIn("nvidia", note)
+
+    def test_mesa_pair(self):
+        env, note = launcher.gpu_plan("auto", scan=[("amd", True, 512 << 20), ("amd", False, 8 << 30, "amdgpu")])
+        self.assertEqual(env, {"DRI_PRIME": "1"})
+        self.assertIn("DRI_PRIME=1", note)
+
+    def test_mesa_pair_default_is_the_bigger_one(self):
+        env, note = launcher.gpu_plan("auto", scan=[("amd", True, 12 << 30, "amdgpu"), ("amd", False, 512 << 20, "amdgpu")])
+        self.assertIsNone(env)
+        self.assertIn("most VRAM", note)
+
+    def test_vram_unknown_gives_up(self):
+        env, note = launcher.gpu_plan("auto", scan=[("intel", True, 0, "i915"), ("amd", False, 0, "amdgpu")])
+        self.assertIsNone(env)
+        self.assertIn("cannot tell", note)
+
+    def test_discrete_guesses_when_unknown(self):
+        env, note = launcher.gpu_plan("discrete", scan=[("intel", True, 0, "i915"), ("amd", False, 0, "amdgpu")])
+        self.assertEqual(env, {"DRI_PRIME": "1"})
+
+    def test_one_gpu_off_and_no_gpu(self):
+        self.assertIsNone(launcher.gpu_plan("auto", scan=[("amd", True, 4 << 30, "amdgpu")])[0])
+        self.assertIsNone(launcher.gpu_plan("off", scan=[("intel", True, 0, ""), ("nvidia", False, 0, "nvidia")])[0])
+        self.assertIsNone(launcher.gpu_plan("off", scan=[])[0])
+        self.assertIsNone(launcher.gpu_plan("auto", scan=[])[0])
+
+    def test_no_boot_flag_takes_the_first_card(self):
+        env, note = launcher.gpu_plan("auto", scan=[("other", False, 0, ""), ("other", False, 0, "")])
+        self.assertIsNone(env)
+
+    def test_player_vars_win(self):
+        scan = [("intel", True, 0, "i915"), ("nvidia", False, 0, "nvidia")]
+        for var, value in (("DRI_PRIME", "1"), ("__NV_PRIME_RENDER_OFFLOAD", "0"),
+                           ("MESA_VK_DEVICE_SELECT", "1002:744c"), ("VK_DRIVER_FILES", "/mine.json")):
+            env, note = launcher.gpu_plan("auto", environ={var: value}, scan=scan)
+            self.assertIsNone(env)
+            self.assertIn(var, note)
+
+
+
+
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
     unittest.main()
 

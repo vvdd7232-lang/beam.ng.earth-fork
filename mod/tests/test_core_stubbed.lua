@@ -348,7 +348,7 @@ veh.pos = vec3(9710, 0, 1200)
 T.check(pumpUntil(function() return #received('prepare_anchor') == 2 end, 5), 'prefetch at distance - 300 m')
 local req2 = received('prepare_anchor')[2]
 local a1 = geodesy.newAnchor(req.lat, req.lon)
-local plat, plon = a1:enuToGeodetic(9710, 0, 1200)
+local plat, plon = a1:worldToGeodetic(9710, 0, 1200)
 T.near(req2.lat, plat, 1e-9, 'prefetch lat = player lat'); T.near(req2.lon, plon, 1e-9, 'prefetch lon = player lon')
 T.check(req2.cx == 512 and req2.cy == 0, 'terrain hint = snap256(predicted position at the commit + 4 s * v) = (512, 0), got ' .. req2.cx)
 -- (terrain-follow keeps working in the old frame meanwhile; answer nothing to it)
@@ -369,7 +369,7 @@ frame()
 local fN = frameNo
 T.check(calls.setClusterPosRelRot > clusterMoves, 'rebase: vehicles moved')
 local a2 = geodesy.newAnchor(req2.lat, req2.lon)
-local xf = a1:transformTo(a2)
+local xf = a1:worldTransformTo(a2, 10000, 10, 1200)
 local ex, ey, ez = xf:apply(10000, 10, 1200)
 local lc = veh.lastCluster
 T.check(lc.node == -1, 'all clusters')
@@ -817,6 +817,20 @@ T.check(cs.clears == 1 and cs.clearedBytes == 1034567890 and cs.usedBytes == 2e8
 serverSend({ type = 'cache', v = 1, usedBytes = 210000000, capBytes = 0, files = 13, ready = true, managed = true })
 frames(2)
 T.check(core.cacheState().clears == 1 and core.cacheState().clearedBytes == 1034567890, 'later usage keeps the last clear')
+
+do -- the window gets its view only while it is shown: it is hidden by default (settings hudVisible), and building
+   -- one walks every far tile (farfield.stats) each frame
+  local ui = require('beamngEarth/ui')
+  local draw, vis0, views = ui.draw, ui.visible, {}
+  ui.draw = function(view, actions) views[#views + 1] = view; return draw(view, actions) end
+  ui.visible = false
+  frames(5)
+  T.check(#views == 0, 'hidden window: no view built')
+  ui.visible = true
+  frames(1)
+  T.check(#views == 1 and type(views[1].connection) == 'string', 'shown window: its view built')
+  ui.draw, ui.visible = draw, vis0
+end
 core.reconnect()
 T.check(core.cacheState() == nil and not core.cacheClear(), 'disconnected: numbers gone, no request sent')
 beamngEarth_settings = nil
@@ -836,5 +850,16 @@ do -- a rebase's anchor on its grid, the terrain hint shifted by the player's sp
   local dx, dy = geodesy.newAnchor(sLat, sLon):geodeticToEnu(pl.lat, pl.lon, 0)
   local ex, ey = require('beamngEarth/follow').target(dx + 290, dy, 30, 0)     -- (290 m to the 10 km rebase distance)
   T.check(cx == ex and cy == ey, string.format('rebase hint in the snapped frame: (%d, %d), want (%d, %d)', cx, cy, ex, ey))
+end
+-- GitHub #339: a teleport onto a hole in the ground (a tunnel's portal) is set down on the nearest ground instead
+do
+  local core = require('beamngEarth/core')
+  local hole = function(x, y) if math.sqrt(x * x + y * y) < 20 then return nil end return 100 end
+  local x, y, z = core.safeSpot(0, 0, hole)
+  T.check(z == 100 and math.sqrt(x * x + y * y) >= 20 and math.sqrt(x * x + y * y) <= 20 + core.SAFE_RING_M,
+    'safeSpot: out of a 20 m hole onto the nearest ground')
+  local a, b, c = core.safeSpot(5, 5, function() return 7 end)
+  T.check(a == 5 and b == 5 and c == 7, 'safeSpot: ground under the spot: the spot itself')
+  T.check(core.safeSpot(0, 0, function() return nil end) == nil, 'safeSpot: no ground anywhere near: nil')
 end
 T.done('test_core_stubbed')

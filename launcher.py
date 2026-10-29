@@ -83,6 +83,27 @@ def title(text):
     _out("  " + "-" * max(24, len(text)))
 
 
+DISCORD = "https://discord.gg/tgf"
+
+
+def support_notice(multiplayer=False):
+    """Where to get help (the BeamMP team, 2026-10-27: players kept asking them about BeamNG.Earth): the Discord once at
+    every start; once BeamMP is up, what it means for multiplayer (said once each: the user, 2026-10-27)."""
+    if not multiplayer:
+        say("Join the TGForever Discord to chat, get help, report bugs or help develop")
+        say(f"the mod: {DISCORD}")
+        return
+    _out("")
+    _out("  " + "=" * 78)
+    _out("  BeamNG.Earth is not like a normal BeamNG mod: it needs this app running")
+    _out("  next to the game. If something is not working in multiplayer, it is almost")
+    _out("  certainly a BeamNG.Earth problem, not a BeamMP one: ask on the TGForever")
+    _out("  Discord above, and do NOT contact the BeamMP team or open BeamMP support")
+    _out("  tickets about it.")
+    _out("  BeamNG.Earth servers are in the \"BeamNG.Earth\" tab of BeamMP's server browser.")
+    _out("  " + "=" * 78)
+
+
 def problem(msg, hint=None):
     """Something that stops the start: set apart, with what to do about it."""
     import textwrap
@@ -410,6 +431,93 @@ def windows_game_dir():
 GFX_ARG = {"dx11": "dx11", "dx12": "d3d12", "vk": "vk"}
 
 
+STEER_VARS = ("DRI_PRIME", "__NV_PRIME_RENDER_OFFLOAD", "__GLX_VENDOR_LIBRARY_NAME", "MESA_VK_DEVICE_SELECT", "VK_DRIVER_FILES", "VK_ICD_FILENAMES")
+GPU_VENDORS = {"0x10de": "nvidia", "0x1002": "amd", "0x8086": "intel"}
+
+
+def gpu_scan():
+    """Every PCI display controller, in DRM card order: (vendor, boot, vram, driver) — vendor from the PCI ID
+    ("nvidia"/"amd"/"intel"/"other"), boot: the firmware starts it (the GPU apps get by default), vram: the bytes
+    the driver reports (0: it does not say; NVIDIA's proprietary one never does), driver: the bound kernel
+    module's name ("" none)."""
+    import glob
+    out = []
+    for card in sorted(glob.glob("/sys/class/drm/card[0-9]*")):
+        d = os.path.join(card, "device")
+        try:
+            with open(os.path.join(d, "class")) as f:
+                if not f.read().strip().startswith("0x03"):    # a display controller (VGA, or NVIDIA's 3D one)
+                    continue
+            with open(os.path.join(d, "vendor")) as f:
+                vendor = GPU_VENDORS.get(f.read().strip().lower(), "other")
+        except OSError:
+            continue                    # a non-PCI card (simpledrm, a VM's): nothing to read
+        boot, vram, driver = False, 0, ""
+        try:
+            with open(os.path.join(d, "boot_vga")) as f:
+                boot = f.read().strip() == "1"
+        except OSError:
+            pass
+        for n in ("mem_info_vram_size", "mem_info_vram_total"):        # amdgpu's name, then nouveau's
+            try:
+                with open(os.path.join(d, n)) as f:
+                    vram = int(f.read())
+                    break
+            except (OSError, ValueError):
+                pass
+        try:
+            driver = os.path.basename(os.path.realpath(os.path.join(d, "driver")))
+        except OSError:
+            pass
+        out.append((vendor, boot, vram, driver))
+    return out
+
+
+def _gb(n):
+    """VRAM bytes as text (0: "unknown")."""
+    return f"{n / (1 << 30):.1f} GB" if n else "unknown"
+
+
+def gpu_plan(mode, environ=None, scan=None):
+    """(env, note) that put the game (and the server's GPU work) on the discrete GPU of a hybrid-graphics machine,
+    (None, note) when there is nothing to do (the note says why, for the log). mode: "auto" steers only when the
+    default GPU looks weaker than another (a laptop's integrated one — the user's report, 2026-10-26: the game
+    started directly rendered on the integrated GPU where Steam's start used the dedicated one), "discrete" does it
+    whenever a discrete one can be named, "off" never. A steering variable already set (the player's, or Steam's
+    launch options') wins: nothing is overridden.
+
+    The variables: NVIDIA's driver wants __NV_PRIME_RENDER_OFFLOAD (the Vulkan loader then offers the NVIDIA device
+    first) and the GL one __GLX_VENDOR_LIBRARY_NAME; Mesa's follow DRI_PRIME=1 (render offload: the GPU that is not
+    the default one) through its device-select layer, which the server's wgpu compute sees too. Which of two Mesa
+    GPUs is the discrete one comes from the VRAM they report; without that (and without the NVIDIA driver) auto
+    gives up and discrete guesses DRI_PRIME=1."""
+    environ = os.environ if environ is None else environ
+    for k in STEER_VARS:
+        if environ.get(k):
+            return None, f"{k} is set already: the player steers, nothing done"
+    if mode == "off":
+        return None, ""
+    gpus = scan if scan is not None else gpu_scan()
+    if len(gpus) < 2:
+        return None, ("one GPU: nothing to steer" if gpus else "no GPU seen: nothing to steer")
+    boot = next((g for g in gpus if g[1]), gpus[0])
+    nv = [g for g in gpus if g[0] == "nvidia" and g[3] == "nvidia"]
+    if nv:
+        if boot not in nv or mode == "discrete":
+            return ({"__NV_PRIME_RENDER_OFFLOAD": "1", "__GLX_VENDOR_LIBRARY_NAME": "nvidia"},
+                    "NVIDIA PRIME render offload: the game renders on the NVIDIA GPU" +
+                    (" (--gpu discrete; the default GPU is the NVIDIA one already)" if boot in nv else ""))
+        return None, "the default GPU is the NVIDIA one already: nothing to steer"
+    big = max(gpus, key=lambda g: g[2])
+    if big[2] <= boot[2]:
+        if mode == "discrete" and not big[2] and not boot[2]:
+            return {"DRI_PRIME": "1"}, "DRI_PRIME=1 (--gpu discrete; the drivers do not say which GPU has more VRAM)"
+        return None, ("the default GPU has the most VRAM: nothing to steer" if big[2] else
+                      "cannot tell which GPU has more VRAM: nothing steered (set DRI_PRIME=1, or --gpu discrete)")
+    return {"DRI_PRIME": "1"}, (f"DRI_PRIME=1: the game renders on the {big[0]} GPU ({_gb(big[2])}; the default "
+                                f"{boot[0]} one has {_gb(boot[2])})")
+
+
 def start_game(use_gcpatch, build="native", gfx="", user_dir=None):
     """Launch the game's executable directly; never invoke a store client."""
     import shlex
@@ -680,6 +788,10 @@ def main():
     ap.set_defaults(build="native")
     ap.add_argument("--gfx", default="", choices=["dx11", "dx12", "vk", ""],
                     help="the Windows build's renderer, skipping its launch options dialog (default: the dialog)")
+    ap.add_argument("--gpu", default="auto", choices=["auto", "discrete", "off"], metavar="MODE",
+                    help="Linux: which GPU the game renders on when the machine has two (hybrid graphics): auto "
+                         "(default) puts it on the discrete one when the default would be the weaker (the "
+                         "integrated one), discrete forces that, off never steers; existing GPU variables win")
     ap.add_argument("--no-terminal", action="store_true", help="Linux: no terminal window (log to a file)")
     ap.add_argument("extra", nargs=argparse.REMAINDER, help="after --: more options for the server")
     args = ap.parse_args()
@@ -816,6 +928,7 @@ def beammp_up(user_dir, build, args):
     version = bmplaunch.log_version(bmplaunch.read_log(log_path))
     row("Multiplayer", f"BeamMP{' v' + version if version else ''} ready: in the game, Multiplayer, then a server "
         "running BeamNG.Earth")
+    support_notice(multiplayer=True)
 
     def watch():                            # (a launcher too old for BeamMP's current mod: said once, plainly)
         for _ in range(60):
@@ -840,6 +953,7 @@ def beammp_up(user_dir, build, args):
 def run(args):
     import install
     title(f"BeamNG.Earth {install.version()}")
+    support_notice()
     wine = under_wine()
     build = "native"
     if args.user_dir:
@@ -849,6 +963,11 @@ def run(args):
         build, user_dir = linux_build(args.build)
     else:
         user_dir = user_folder()
+    if not IS_WIN:
+        gpu_env, gpu_note = gpu_plan(args.gpu)
+        os.environ.update(gpu_env or {})
+        if gpu_note:
+            row("Game GPU", gpu_note)
     row("Game folder", user_dir)
     running = game_alive()
     if not running:
@@ -893,7 +1012,14 @@ def run(args):
     row("Server log", log_path)
     beammp = None
     try:
-        beammp = None if args.no_game else beammp_up(user_dir, build, args)
+        try:
+            beammp = None if args.no_game else beammp_up(user_dir, build, args)
+        except OSError as e:
+            # (multiplayer is optional: a damaged BeamMP launcher folder, WinError 1392 "the file or directory is
+            # corrupted and unreadable", stopped the app before the game started, GitHub #282)
+            row("Multiplayer", f"BeamMP not started ({e}); if this repeats, delete the BeamMP-Launcher folder in "
+                               "%LOCALAPPDATA% (BeamNG.Earth downloads it again)")
+            beammp = None
         if args.no_game:
             say()
             say("Start BeamNG.drive and pick 'BeamNG.Earth' in Freeroam. Ctrl+C stops the server.")
