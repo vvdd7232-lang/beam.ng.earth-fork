@@ -323,7 +323,7 @@ class StandaloneStartTest(unittest.TestCase):
                     mock.patch.dict(os.environ, {"BNGE_GAME_ARGS": ""}):
                 self.assertIs(launcher.start_game(False, gfx=gfx), po.return_value)
                 sf.assert_not_called()
-                self.assertEqual(po.call_args.args[0], ["C:/Games/BeamNG/BeamNG.drive.exe"] +
+                self.assertEqual(po.call_args.args[0], [os.path.join("C:/Games/BeamNG", "BeamNG.drive.exe")] +
                                  (["-gfx", "d3d12"] if gfx else []))
 
     def test_missing_game_does_not_launch_client(self):
