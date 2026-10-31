@@ -74,7 +74,7 @@ import xproc
 
 log = logging.getLogger("earthd.mapdata")
 
-LAYER_THREADS = 4               # layers of a cell built at once (each fetches through the shared limits)
+LAYER_THREADS = 12              # layers built at once, every cell and caller of the process (mostly waiting on downloads: 4 were a fresh place's first graded block's ~25 s queue, Ipswich 2026-10-30)
 OSM_THREADS = 8                 # cells whose OpenStreetMap tags are read at once (alongside their Overture roads)
 # (cell, layer)s built ahead at once by warm() (a fresh place's first road tile asked for ~70 of them one after another:
 # 56 s in Marseille, GitHub #241): half the CPUs, at most 8, and none on 8 or fewer: each is a DuckDB query and a
@@ -254,6 +254,8 @@ class MapData:
         self.rasters = maprasters.Rasters(self.raw_dir, self.fetcher, os.path.join(cache_dir, "dem", "lidarbc"))
         import railtags                 # (OSM's railway tags joined to the roads layer's rail segments)
         self.rail_tags = railtags.RailTags(cache_dir, self.fetcher) if railtags.ON else None
+        import roadz                    # (real road / deck / tunnel heights where a source has them: BNE_ROADZ)
+        roadz.install(cache_dir, self.fetcher, self)
         self.lane_tags = railtags.LaneTags(cache_dir, self.fetcher) if railtags.LANES_ON else None   # (markings.py)
         import highwaysigns             # (exit, overhead and mile-marker signs: railtags.SignTags, signstream.py)
         self.highway_signs = highwaysigns.Source(self) if railtags.SIGNS_ON else None
@@ -562,7 +564,13 @@ class MapData:
     _mirror_lock = threading.Lock()
 
     def _mirror_note(self, nbytes):
-        """Count what this process wrote; every MIRROR_MB / 8 of it, the mirror cut back to MIRROR_MB."""
+        """Count what this process wrote; every MIRROR_MB / 8 of it, the mirror cut back to MIRROR_MB. Only in the
+        server's own process: every worker process walked the whole mirror (~100k files) at its first write, several
+        at once on a first visit, on the server's few CPUs while the world loaded (2026-10-30); earthd prunes it at
+        its start too (prune_own_caches)."""
+        import multiprocessing
+        if multiprocessing.current_process().name != "MainProcess":
+            return
         with MapData._mirror_lock:
             MapData._mirror_written += nbytes
             now = time.monotonic()
@@ -703,6 +711,26 @@ class MapData:
         for k, key, layer in todo:
             self._warm_ex.submit(run, k, key, layer)
         return len(todo)
+
+    def predownload(self, key, layer):
+        """A saved area's cell layer (areas.py): built from its sources at netfetch "predownload" and stored, unless it
+        is on disk; not loaded or mirrored (the session's cells keep the mirror). True when built now. Raises the
+        sources' netfetch errors."""
+        key = _key(key)
+        path = self.path(key, layer)
+        if os.path.exists(path):
+            return False
+        with self._key_lock(key, layer):
+            got, mine = xproc.once(path + ".lock", lambda: path if os.path.exists(path) else None, BUILD_WAIT_S,
+                                   "predownload")
+            if got is not None:
+                return False
+            try:
+                self._store(path, self._build(key, layer, "predownload"))
+            finally:
+                if mine:
+                    xproc.release(path + ".lock")
+        return True
 
     def cell_at(self, lat, lon, layers=LAYERS, kind="demand"):
         return self.cell(mapcells.cell_of(lat, lon), layers, kind)

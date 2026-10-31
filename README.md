@@ -1,7 +1,7 @@
 # BeamNG.Earth — standalone fork
 
 Форк [tecnagamer/beamng.earth](https://github.com/tecnagamer/beamng.earth), исходный снимок
-релиз `v1.7.1-beta` (MIT; авторство сохранено в LICENSE/CREDITS.md).
+релиз `v1.7.3-beta` (MIT; авторство сохранено в LICENSE/CREDITS.md).
 
 Лаунчер не использует Steam: нет запуска через URI, поиска библиотек/Proton-префиксов,
 оверлея, Steam Runtime или проверки клиента. Игра запускается напрямую.
@@ -54,5 +54,9 @@ Linux: `python launcher.py --game-dir /path/to/BeamNG.drive` (нативная �
 Исходная документация: [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md).
 Она и CHANGELOG/research описывают upstream и могут упоминать удалённые возможности.
 
-Текущая версия форка: **1.7.1-beta**. Кэш можно перенести через `--cache-dir PATH`;
+Текущая версия форка: **1.7.3-beta**. Кэш можно перенести через `--cache-dir PATH`;
 путь игры теперь запоминается между запусками. Изменения upstream — в CHANGELOG.md.
+
+Версия 1.7.3-beta рассчитана upstream на BeamNG.drive **0.40.4**.
+Предзагрузка областей/маршрутов и построение мира заранее доступны на карте.
+Обновление не гарантирует исправления недоступных внешних источников данных.

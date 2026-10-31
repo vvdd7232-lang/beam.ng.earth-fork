@@ -38,3 +38,14 @@ Windows certificate-store support and parent-process cleanup improvements.
 Compile/help checks and 32 selected launcher, settings and GPU unit tests passed.
 Windows CI packages the rebuilt native module and smoke-tests --server --help.
 Actual gameplay and access to external data providers need user-side testing.
+
+## 1.7.3-beta update
+
+Updated from upstream v1.7.1-beta to stable beta tag v1.7.3-beta (includes 1.7.2).
+Direct launcher and removal of store integration retained without merge conflicts.
+New upstream native module minimum is 116; native-version and 32 launcher/settings/
+GPU regression checks now also run in Windows CI before packaging. The bundled
+USGS lidar index is included by upstream packaging. Local compilation/help and
+32 selected regression tests passed. Windows smoke test only checks packaged
+server --help; real gameplay and provider connectivity still need user testing.
+Upstream compatibility target: BeamNG.drive 0.40.4.
